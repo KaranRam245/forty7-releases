@@ -9,7 +9,7 @@
 set -eu
 
 REPO="${FORTE7_REPO:-KaranRam245/forty7-releases}"
-BIN_NAME="forte-7-cli"
+BIN_NAME="forty7-cli"
 TARGET="aarch64-apple-darwin"
 VERSION=""
 BIN_DIR="${FORTE7_BIN_DIR:-$HOME/.local/bin}"
@@ -38,13 +38,13 @@ if [ -z "$VERSION" ]; then
   VERSION="$(
     curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" \
       | grep '"tag_name"' \
-      | sed -n 's/.*"tag_name": *"forte-7-v\([^"]*\)".*/\1/p' \
+      | sed -n 's/.*"tag_name": *"forty7-v\([^"]*\)".*/\1/p' \
       | head -1
   )"
   [ -n "$VERSION" ] || die "could not resolve the latest forte-7 release; pass --version X.Y.Z"
 fi
 
-TAG="forte-7-v$VERSION"
+TAG="forty7-v$VERSION"
 ASSET="$BIN_NAME-$VERSION-$TARGET.tar.gz"
 URL="https://github.com/$REPO/releases/download/$TAG/$ASSET"
 

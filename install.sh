@@ -1,11 +1,20 @@
 #!/bin/sh
 # Install the forte-7 CLI from a GitHub release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/KaranRam245/wednesday/main/forte-7/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/KaranRam245/forty7-releases/main/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --version 1.2.3 --bin-dir /usr/local/bin
 #
-# With no --version it installs the latest `forte-7-v*` release. macOS on Apple
+# With no --version it installs the latest `forty7-v*` release. macOS on Apple
 # Silicon only for now; other platforms exit with a clear message.
+#
+# Source of truth: forte-7/scripts/install.sh in the private wednesday repo. The
+# copy at forty7-releases/install.sh is what users curl, and is mirrored there by
+# the release job of release-forte-7.yml -- do NOT edit that copy, it is
+# overwritten on every release. Edit this file instead.
+#
+# It is served from `main`, so it must keep working for every --version still in
+# use, not just the newest: the `ASSET=` name and the `tag_name` parse below are a
+# contract with release-forte-7.yml. Change them together.
 set -eu
 
 REPO="${FORTE7_REPO:-KaranRam245/forty7-releases}"

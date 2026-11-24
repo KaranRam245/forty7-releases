@@ -1,27 +1,30 @@
 #!/bin/sh
-# Install the forte-7 CLI from a GitHub release.
+# Install the forty7 CLI from a GitHub release.
 #
 #   curl -fsSL https://raw.githubusercontent.com/KaranRam245/forty7-releases/main/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --version 1.2.3 --bin-dir /usr/local/bin
 #
-# With no --version it installs the latest `forty7-v*` release. macOS on Apple
-# Silicon only for now; other platforms exit with a clear message.
+# With no --version it installs the latest `forty7-v*` release. Supports macOS
+# (Apple Silicon and Intel) and Linux (x86_64 and arm64, static musl builds).
+# Windows is a manual zip download; see the README.
+# Env: FORTY7_BIN_DIR, FORTY7_REPO, FORTY7_DOWNLOAD_BASE (a mirror of the release URLs).
 #
-# Source of truth: forte-7/scripts/install.sh in the private wednesday repo. The
+# Source of truth: forty7/scripts/install.sh in the private wednesday repo. The
 # copy at forty7-releases/install.sh is what users curl, and is mirrored there by
-# the release job of release-forte-7.yml -- do NOT edit that copy, it is
+# the release job of release-forty7.yml -- do NOT edit that copy, it is
 # overwritten on every release. Edit this file instead.
 #
 # It is served from `main`, so it must keep working for every --version still in
 # use, not just the newest: the `ASSET=` name and the `tag_name` parse below are a
-# contract with release-forte-7.yml. Change them together.
+# contract with release-forty7.yml. Change them together.
 set -eu
 
-REPO="${FORTE7_REPO:-KaranRam245/forty7-releases}"
+REPO="${FORTY7_REPO:-KaranRam245/forty7-releases}"
+# Overridable so the asset contract can be tested against a local mirror.
+DOWNLOAD_BASE="${FORTY7_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}"
 BIN_NAME="forty7-cli"
-TARGET="aarch64-apple-darwin"
 VERSION=""
-BIN_DIR="${FORTE7_BIN_DIR:-$HOME/.local/bin}"
+BIN_DIR="${FORTY7_BIN_DIR:-$HOME/.local/bin}"
 
 die() { echo "install: $*" >&2; exit 1; }
 
@@ -29,43 +32,60 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --version) VERSION="${2:?--version needs a value}"; shift 2 ;;
     --bin-dir) BIN_DIR="${2:?--bin-dir needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option '$1'" ;;
   esac
 done
 
 os="$(uname -s)"
 arch="$(uname -m)"
-[ "$os" = "Darwin" ] || die "only macOS is supported right now (got $os)"
-[ "$arch" = "arm64" ] || die "only Apple Silicon is supported right now (got $arch)"
+case "$os/$arch" in
+  Darwin/arm64) TARGET="aarch64-apple-darwin" ;;
+  Darwin/x86_64) TARGET="x86_64-apple-darwin" ;;
+  Linux/x86_64) TARGET="x86_64-unknown-linux-musl" ;;
+  Linux/aarch64|Linux/arm64) TARGET="aarch64-unknown-linux-musl" ;;
+  *) die "no forty7-cli build for $os/$arch; supported: macOS arm64/x86_64, Linux x86_64/aarch64" ;;
+esac
 
 command -v curl >/dev/null 2>&1 || die "curl is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256() { sha256sum "$1" | awk '{print $1}'; }
+elif command -v shasum >/dev/null 2>&1; then
+  sha256() { shasum -a 256 "$1" | awk '{print $1}'; }
+else
+  die "sha256sum or shasum is required"
+fi
 
 if [ -z "$VERSION" ]; then
-  # Newest forte-7 release tag, resolved without needing a GitHub token.
+  # Newest forty7 release tag, resolved without needing a GitHub token.
   VERSION="$(
     curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" \
       | grep '"tag_name"' \
       | sed -n 's/.*"tag_name": *"forty7-v\([^"]*\)".*/\1/p' \
       | head -1
   )"
-  [ -n "$VERSION" ] || die "could not resolve the latest forte-7 release; pass --version X.Y.Z"
+  [ -n "$VERSION" ] || die "could not resolve the latest forty7 release; pass --version X.Y.Z"
 fi
 
 TAG="forty7-v$VERSION"
 ASSET="$BIN_NAME-$VERSION-$TARGET.tar.gz"
-URL="https://github.com/$REPO/releases/download/$TAG/$ASSET"
+URL="$DOWNLOAD_BASE/$TAG/$ASSET"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 echo "install: downloading $TAG ($TARGET)"
-curl -fsSL "$URL" -o "$tmp/$ASSET" || die "download failed: $URL"
+status="$(curl -sSL -w '%{http_code}' -o "$tmp/$ASSET" "$URL")" || die "download failed: $URL"
+case "$status" in
+  200) ;;
+  404) die "no forty7-cli build for $TARGET in version $VERSION ($URL)" ;;
+  *) die "download failed with HTTP $status: $URL" ;;
+esac
 
 if curl -fsSL "$URL.sha256" -o "$tmp/$ASSET.sha256" 2>/dev/null; then
   expected="$(awk '{print $1}' "$tmp/$ASSET.sha256")"
-  actual="$(shasum -a 256 "$tmp/$ASSET" | awk '{print $1}')"
+  actual="$(sha256 "$tmp/$ASSET")"
   [ "$expected" = "$actual" ] || die "checksum mismatch (expected $expected, got $actual)"
 else
   echo "install: no published checksum for $ASSET, skipping verification" >&2
